@@ -1,0 +1,27 @@
+{
+  "name": "arb-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+
+  "license": "ISC",
+  "dependencies": {
+    "@uniswap/v4-sdk": "^1.27.0",
+    "dotenv": "^17.2.3",
+    "ethers": "^6.16.0",
+    "pino": "^10.3.0",
+    "viem": "^2.45.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
