@@ -3,7 +3,7 @@ export function checkArbitrage(
   referencePrice: number,
   minSpreadBps: number,
 ) {
-  const spreadBps = ((referencePrice - v4Price) / v4Price) * 10_000;
+  const spreadBps = ((referencePrice - v4Price) / referencePrice) * 10_000;
 
   if (spreadBps > minSpreadBps) {
     return {

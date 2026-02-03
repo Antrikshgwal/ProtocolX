@@ -13,7 +13,7 @@ export const CurrentConfig: SwapExactInSingle = {
     hooks: "0x0000000000000000000000000000000000000000",
   },
   zeroForOne: true,
-  amountIn: ethers.utils.parseUnits("1", ETH_TOKEN.decimals).toString(),
+  amountIn: ethers.utils.parseUnits("0.1", ETH_TOKEN.decimals).toString(), // Reduced from 1 ETH to 0.1 ETH
   amountOutMinimum: "0",
   hookData: "0x00",
 };
@@ -30,7 +30,6 @@ const quoterContract = new ethers.Contract(
 
 // (async () => {
 
-
 //   const quotedAmountOut = await quoterContract.quoteExactInputSingle(
 //     {
 //       poolKey: CurrentConfig.poolKey,
@@ -45,7 +44,9 @@ const quoterContract = new ethers.Contract(
 
 export async function getQuoteFormatted(): Promise<number> {
   if (!quoterContract.callStatic?.quoteExactInputSingle) {
-    throw new Error("quoteExactInputSingle method is not available on the contract");
+    throw new Error(
+      "quoteExactInputSingle method is not available on the contract",
+    );
   }
 
   const quotedAmountOut = await quoterContract.callStatic.quoteExactInputSingle(
@@ -56,6 +57,8 @@ export async function getQuoteFormatted(): Promise<number> {
       hookData: CurrentConfig.hookData,
     },
   );
-  return parseFloat(ethers.utils.formatUnits(quotedAmountOut.amountOut, USDC_TOKEN.decimals));
+  return parseFloat(
+    ethers.utils.formatUnits(quotedAmountOut.amountOut, USDC_TOKEN.decimals),
+  );
 }
 getQuoteFormatted();

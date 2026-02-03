@@ -10,7 +10,7 @@ const ConfigSchema = z.object({
     .string()
     .regex(/^0x[a-fA-F0-9]{64}$/, "Invalid private key format"),
   CHAIN_ID: z.coerce.number(),
-  MIN_SPREAD_BPS: z.coerce.number().default(50), // 0.50%
+  MIN_SPREAD_BPS: z.coerce.number().default(25), // 0.25%
   MAX_TRADE_USDC: z.coerce.number().default(5_000),
 });
 
