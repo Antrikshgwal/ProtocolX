@@ -3,9 +3,9 @@ export function checkArbitrage(
   referencePrice: number,
   minSpreadBps: number,
 ) {
-  const spreadBps = ((referencePrice - v4Price) / referencePrice) * 10_000;
+  const spreadBps = ((referencePrice - v4Price) / v4Price) * 10000;
 
-  if (spreadBps > minSpreadBps) {
+  if (spreadBps > 0 && spreadBps >= minSpreadBps) {
     return {
       profitable: true,
       direction: "BUY_V4_SELL_REF",
@@ -13,7 +13,7 @@ export function checkArbitrage(
     };
   }
 
-  if (spreadBps < -minSpreadBps) {
+  if (spreadBps < 0 && Math.abs(spreadBps) >= minSpreadBps) {
     return {
       profitable: true,
       direction: "SELL_V4_BUY_REF",

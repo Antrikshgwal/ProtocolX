@@ -9,11 +9,11 @@ export const account = privateKeyToAccount(
 
 export const publicClient = createPublicClient({
   chain: sepolia,
-  transport: http(config.RPC_URL),
+  transport: http(config.SEPOLIA_RPC_URL),
 });
 
 export const walletClient = createWalletClient({
   account,
   chain: sepolia,
-  transport: http(config.RPC_URL),
+  transport: http(config.SEPOLIA_RPC_URL),
 });

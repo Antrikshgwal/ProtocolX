@@ -1,64 +1,45 @@
-import { SwapExactInSingle } from "@uniswap/v4-sdk";
-import { USDC_TOKEN, ETH_TOKEN } from "./constants.ts";
 import { ethers } from "ethers";
-import { QUOTER_CONTRACT_ADDRESS, QUOTER_ABI } from "./constants.ts";
-import { get } from "node:http";
+import { config } from "../config";
+import {
+  USDC_TOKEN,
+  ETH_TOKEN,
+  QUOTER_CONTRACT_ADDRESS,
+  QUOTER_ABI,
+  ZERO_ADDRESS,
+} from "./constants";
 
-export const CurrentConfig: SwapExactInSingle = {
-  poolKey: {
-    currency0: ETH_TOKEN.address,
-    currency1: USDC_TOKEN.address,
-    fee: 500,
-    tickSpacing: 10,
-    hooks: "0x0000000000000000000000000000000000000000",
-  },
-  zeroForOne: true,
-  amountIn: ethers.utils.parseUnits("0.1", ETH_TOKEN.decimals).toString(), // Reduced from 1 ETH to 0.1 ETH
-  amountOutMinimum: "0",
-  hookData: "0x00",
-};
-
-const provider = new ethers.providers.JsonRpcProvider(
-  "https://eth-sepolia.g.alchemy.com/v2/FPs0a7zk7rkXzAObY5zNRsgayEoQ3EYe",
-);
-
+const provider = new ethers.providers.JsonRpcProvider(config.SEPOLIA_RPC_URL);
 const quoterContract = new ethers.Contract(
   QUOTER_CONTRACT_ADDRESS,
   QUOTER_ABI,
   provider,
 );
 
-// (async () => {
+const POOL_KEY = {
+  currency0: ETH_TOKEN.address,
+  currency1: USDC_TOKEN.address,
 
-//   const quotedAmountOut = await quoterContract.quoteExactInputSingle(
-//     {
-//       poolKey: CurrentConfig.poolKey,
-//       zeroForOne: CurrentConfig.zeroForOne,
-//       exactAmount: CurrentConfig.amountIn,
-//       hookData: CurrentConfig.hookData,
-//     },
-//   );
+  fee: 500,
+  tickSpacing: 10,
+  hooks: ZERO_ADDRESS,
+};
 
-//   console.log(ethers.utils.formatUnits(quotedAmountOut.amountOut, USDC_TOKEN.decimals));
-// })();
+/** Get price quote for 1 ETH in USDC */
+export async function getQuote(): Promise<number> {
+  const amountIn = ethers.utils.parseUnits("1", ETH_TOKEN.decimals).toString();
 
-export async function getQuoteFormatted(): Promise<number> {
   if (!quoterContract.callStatic?.quoteExactInputSingle) {
-    throw new Error(
-      "quoteExactInputSingle method is not available on the contract",
-    );
+    throw new Error("quoteExactInputSingle method not available on contract");
   }
 
-  const quotedAmountOut = await quoterContract.callStatic.quoteExactInputSingle(
-    {
-      poolKey: CurrentConfig.poolKey,
-      zeroForOne: CurrentConfig.zeroForOne,
-      exactAmount: CurrentConfig.amountIn,
-      hookData: CurrentConfig.hookData,
-    },
-  );
+  const result = await quoterContract.callStatic.quoteExactInputSingle({
+    poolKey: POOL_KEY,
+    zeroForOne: true,
+    exactAmount: amountIn,
+    hookData: "0x",
+  });
+
   return parseFloat(
-    ethers.utils.formatUnits(quotedAmountOut.amountOut, USDC_TOKEN.decimals),
+    ethers.utils.formatUnits(result.amountOut, USDC_TOKEN.decimals),
   );
 }
-getQuoteFormatted();
