@@ -15,6 +15,7 @@
     "@ethersproject/bignumber": "^5.8.0",
     "@ethersproject/contracts": "^5.8.0",
     "@ethersproject/providers": "^5.8.0",
+    "@langchain/google-genai": "^2.1.15",
     "@uniswap/sdk-core": "^7.10.1",
     "@uniswap/universal-router-sdk": "^4.29.5",
     "@uniswap/v4-sdk": "^1.27.0",
