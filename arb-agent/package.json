@@ -5,7 +5,9 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "node --max-old-space-size=4096 -r ts-node/register agent/server.ts",
+    "chat": "node --max-old-space-size=4096 -r ts-node/register agent/agent.ts"
   },
   "keywords": [],
   "author": "",

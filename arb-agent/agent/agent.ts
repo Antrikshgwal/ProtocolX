@@ -7,6 +7,11 @@ import {
 import { tools, toolsByName } from "./tools";
 import type { ToolCall } from "@langchain/core/messages/tool";
 import { ToolMessage } from "@langchain/core/messages";
+import { initializeGateway } from "../../gateway";
+import { config } from "../src/config";
+
+// Initialize Gateway client for cross-chain transfers
+initializeGateway(config.AGENT_PRIVATE_KEY as `0x${string}`);
 
 // Initialize model with tools
 const model = new ChatGoogleGenerativeAI({
@@ -18,9 +23,9 @@ const model = new ChatGoogleGenerativeAI({
 
 const modelWithTools = model.bindTools(tools);
 
-const SYSTEM_PROMPT = `You are a DeFi arbitrage trading agent for Uniswap V4 pools.
+const SYSTEM_PROMPT = `You are a DeFi arbitrage trading agent for Uniswap V4 pools with cross-chain USDC transfer capabilities.
 
-AVAILABLE TOOLS:
+=== SWAP TOOLS (Uniswap V4) ===
 1. get_eth_quote - Get ETH price from ONE specific chain
 2. get_all_eth_quotes - Get ETH prices from ALL chains at once
 3. simulate_usdc_to_eth - Simulate USDC→ETH swap (estimate gas, no tokens spent)
@@ -28,17 +33,43 @@ AVAILABLE TOOLS:
 5. swap_usdc_to_eth - EXECUTE real USDC→ETH swap (spends tokens!)
 6. swap_eth_to_usdc - EXECUTE real ETH→USDC swap (spends tokens!)
 
-AVAILABLE CHAINS: SEPOLIA, BASE, ARBITRUM, UNICHAIN
+SWAP CHAINS: SEPOLIA, BASE, ARBITRUM, UNICHAIN
 
-WORKFLOW - Follow this exactly:
-1. When user asks for quotes → use get_all_eth_quotes or get_eth_quote
-2. When user says "simulate" or wants to test → use simulate_usdc_to_eth or simulate_eth_to_usdc with the amount and chain
-3. When user confirms execution → use swap_usdc_to_eth or swap_eth_to_usdc
+=== GATEWAY TOOLS (Cross-Chain USDC) ===
+Balance:
+- get_gateway_balances - Get USDC balances across all Gateway chains
+- get_gateway_balance_on_chain - Get balance on specific chain
+- get_wallet_usdc_balance - Get wallet USDC (not Gateway) balance
+- analyze_gateway_liquidity - Find chains with most/least liquidity
 
-IMPORTANT:
-- Do NOT call get_all_eth_quotes repeatedly. Once you have quotes, proceed to simulation.
-- When user provides an amount (e.g., "1000 USDC"), immediately use simulate_usdc_to_eth with that amount
-- For arbitrage: buy ETH on the cheaper chain, sell on the expensive chain`;
+Deposit:
+- deposit_usdc_to_gateway - Deposit USDC into Gateway Wallet on a chain
+- deposit_usdc_multiple_chains - Deposit on multiple chains at once
+
+Transfer:
+- transfer_usdc_crosschain - Transfer USDC from one chain to another
+- transfer_usdc_from_multiple_chains - Aggregate transfers to one destination
+- consolidate_usdc_to_chain - Move all balances to one chain
+
+GATEWAY CHAINS: sepolia, baseSepolia, avalancheFuji, arcTestnet, hyperliquidEvmTestnet, seiTestnet, sonicTestnet, worldchainSepolia
+
+=== WORKFLOWS ===
+Arbitrage:
+1. get_all_eth_quotes to find price differences
+2. simulate swaps to estimate gas
+3. Execute: buy ETH on cheap chain, sell on expensive chain
+
+Cross-Chain Liquidity:
+1. get_gateway_balances to see current distribution
+2. transfer_usdc_crosschain to move funds where needed
+3. Or use consolidate_usdc_to_chain to gather all funds
+
+CRITICAL RULES:
+- ALWAYS use the EXACT chains the user specifies. If user says "Sepolia and Base", ONLY use SEPOLIA and BASE.
+- Do NOT substitute other chains even if they have better prices.
+- Do NOT call get_all_eth_quotes or get_gateway_balances repeatedly.
+- Gateway chains use lowercase (baseSepolia), swap chains use uppercase (BASE).
+- When user specifies chains, compare prices ONLY between those chains and execute on those chains.`;
 
 // LLM call
 async function callLlm(messages: BaseMessage[]) {

@@ -122,6 +122,12 @@ export class MultiChainSwapAdapter {
       chain: this.chain,
     };
   }
+   private async fetchEthBalance(): Promise<bigint> {
+    const balance = await this.publicClient.getBalance({
+      address: this.walletClient.account!.address,
+    });
+    return balance;
+  }
 
   private async ensureUsdcApprovals(amount: bigint): Promise<void> {
     const MAX_UINT256 = 2n ** 256n - 1n;
@@ -186,59 +192,115 @@ export class MultiChainSwapAdapter {
   }
 
   /**
-   * Simulate USDC → ETH swap
+   * Simulate USDC → ETH swap (uses quoter - doesn't require actual tokens)
    * @param amountIn - USDC amount in smallest units (6 decimals). Example: 100 USDC = 100n * 10n ** 6n
    * @param amountOutMinimum - Minimum ETH to receive in wei. Example: 0.01 ETH = 10n ** 16n
    */
   async simulateUsdcToEth(
     amountIn: bigint,
     amountOutMinimum: bigint = 0n,
-  ): Promise<SwapSimulation> {
+  ): Promise<SwapSimulation & { expectedAmountOut: bigint }> {
     console.log(`🔄 [${this.chain}] Simulating USDC → ETH swap`);
-    const calldata = this.buildSwapCalldata(false, amountIn, amountOutMinimum);
 
-    const simulation = await this.publicClient.simulateContract({
-      address: this.chainConfig.contracts.universalRouter,
-      abi: UNIVERSAL_ROUTER_ABI,
-      functionName: "execute",
-      args: [calldata.commands, calldata.inputs, calldata.deadline],
-      account: this.walletClient.account!.address,
-      value: calldata.value,
-    });
+    const { tokens, poolConfig, contracts } = this.chainConfig;
+    const provider = new ethers.providers.JsonRpcProvider(this.chainConfig.rpcUrl);
+    const quoterContract = new ethers.Contract(contracts.quoter, QUOTER_ABI, provider);
 
-    const result = {
-      ...calldata,
-      gasUsed: BigInt(simulation.request.gas ?? 0n),
+    const poolKey = {
+      currency0: tokens.WETH.address,
+      currency1: tokens.USDC.address,
+      fee: poolConfig.fee,
+      tickSpacing: poolConfig.tickSpacing,
+      hooks: "0x0000000000000000000000000000000000000000",
     };
-    return result;
+
+    let expectedAmountOut = 0n;
+    let gasEstimate = 0n;
+
+    try {
+      // zeroForOne = false means USDC → ETH (currency1 → currency0)
+      const result = await quoterContract.callStatic.quoteExactInputSingle({
+        poolKey,
+        zeroForOne: false,
+        exactAmount: amountIn.toString(),
+        hookData: "0x",
+      });
+      expectedAmountOut = BigInt(result.amountOut.toString());
+      gasEstimate = BigInt(result.gasEstimate?.toString() || "200000");
+    } catch (error: any) {
+      if (error.data) {
+        const decoded = decodeQuoteRevert(error.data);
+        expectedAmountOut = decoded.amountOut;
+        gasEstimate = decoded.gasEstimate || 200000n;
+      } else {
+        throw error;
+      }
+    }
+
+    const calldata = this.buildSwapCalldata(false, amountIn, amountOutMinimum);
+    console.log(`   ✅ [${this.chain}] ${ethers.utils.formatUnits(amountIn, 6)} USDC → ${ethers.utils.formatUnits(expectedAmountOut.toString(), 18)} ETH`);
+
+    return {
+      ...calldata,
+      gasUsed: gasEstimate,
+      expectedAmountOut,
+    };
   }
 
   /**
-   * Simulate ETH → USDC swap
+   * Simulate ETH → USDC swap (uses quoter - doesn't require actual tokens)
    * @param amountIn - ETH amount in wei. Example: 0.1 ETH = 10n ** 17n
    * @param amountOutMinimum - Minimum USDC to receive (6 decimals). Example: 100 USDC = 100n * 10n ** 6n
    */
   async simulateEthToUsdc(
     amountIn: bigint,
     amountOutMinimum: bigint = 0n,
-  ): Promise<SwapSimulation> {
+  ): Promise<SwapSimulation & { expectedAmountOut: bigint }> {
     console.log(`🔄 [${this.chain}] Simulating ETH → USDC swap`);
-    const calldata = this.buildSwapCalldata(true, amountIn, amountOutMinimum);
 
-    const simulation = await this.publicClient.simulateContract({
-      address: this.chainConfig.contracts.universalRouter,
-      abi: UNIVERSAL_ROUTER_ABI,
-      functionName: "execute",
-      args: [calldata.commands, calldata.inputs, calldata.deadline],
-      account: this.walletClient.account!.address,
-      value: calldata.value,
-    });
+    const { tokens, poolConfig, contracts } = this.chainConfig;
+    const provider = new ethers.providers.JsonRpcProvider(this.chainConfig.rpcUrl);
+    const quoterContract = new ethers.Contract(contracts.quoter, QUOTER_ABI, provider);
 
-    const result = {
-      ...calldata,
-      gasUsed: BigInt(simulation.request.gas ?? 0n),
+    const poolKey = {
+      currency0: tokens.WETH.address,
+      currency1: tokens.USDC.address,
+      fee: poolConfig.fee,
+      tickSpacing: poolConfig.tickSpacing,
+      hooks: "0x0000000000000000000000000000000000000000",
     };
-    return result;
+
+    let expectedAmountOut = 0n;
+    let gasEstimate = 0n;
+
+    try {
+      // zeroForOne = true means ETH → USDC (currency0 → currency1)
+      const result = await quoterContract.callStatic.quoteExactInputSingle({
+        poolKey,
+        zeroForOne: true,
+        exactAmount: amountIn.toString(),
+        hookData: "0x",
+      });
+      expectedAmountOut = BigInt(result.amountOut.toString());
+      gasEstimate = BigInt(result.gasEstimate?.toString() || "200000");
+    } catch (error: any) {
+      if (error.data) {
+        const decoded = decodeQuoteRevert(error.data);
+        expectedAmountOut = decoded.amountOut;
+        gasEstimate = decoded.gasEstimate || 200000n;
+      } else {
+        throw error;
+      }
+    }
+
+    const calldata = this.buildSwapCalldata(true, amountIn, amountOutMinimum);
+    console.log(`   ✅ [${this.chain}] ${ethers.utils.formatUnits(amountIn, 18)} ETH → ${ethers.utils.formatUnits(expectedAmountOut.toString(), 6)} USDC`);
+
+    return {
+      ...calldata,
+      gasUsed: gasEstimate,
+      expectedAmountOut,
+    };
   }
 
   /**
@@ -313,32 +375,35 @@ export class MultiChainSwapAdapter {
     return { chain: this.chain, config: this.chainConfig };
   }
 
-  /**
-   * Get ETH price quote in USDC (1 ETH = X USDC)
-   */
-  async getQuote(): Promise<number> {
-    console.log(`📊 [${this.chain}] Getting ETH price quote...`);
+/**
+ * Get ETH price quote in USDC (1 ETH = X USDC)
+ */
+async getQuote(): Promise<number> {
+  console.log(`📊 [${this.chain}] Getting ETH price quote...`);
 
-    const { tokens, poolConfig, contracts } = this.chainConfig;
-    const provider = new ethers.providers.JsonRpcProvider(
-      this.chainConfig.rpcUrl,
-    );
-    const quoterContract = new ethers.Contract(
-      contracts.quoter,
-      QUOTER_ABI,
-      provider,
-    );
+  const { tokens, poolConfig, contracts } = this.chainConfig;
+  const provider = new ethers.providers.JsonRpcProvider(
+    this.chainConfig.rpcUrl,
+  );
+  const quoterContract = new ethers.Contract(
+    contracts.quoter,
+    QUOTER_ABI,
+    provider,
+  );
 
-    const poolKey = {
-      currency0: tokens.WETH.address,
-      currency1: tokens.USDC.address,
-      fee: poolConfig.fee,
-      tickSpacing: poolConfig.tickSpacing,
-      hooks: "0x0000000000000000000000000000000000000000",
-    };
+  const poolKey = {
+    currency0: tokens.WETH.address,
+    currency1: tokens.USDC.address,
+    fee: poolConfig.fee,
+    tickSpacing: poolConfig.tickSpacing,
+    hooks: "0x0000000000000000000000000000000000000000",
+  };
 
+  let priceUsdc = 0;
+
+  try {
     const amountIn = ethers.utils.parseUnits("1", 18).toString(); // 1 ETH
-if (!quoterContract.callStatic?.quoteExactInputSingle) {
+    if (!quoterContract.callStatic?.quoteExactInputSingle) {
       throw new Error("quoteExactInputSingle method not available on contract");
     }
     const result = await quoterContract.callStatic.quoteExactInputSingle({
@@ -348,8 +413,73 @@ if (!quoterContract.callStatic?.quoteExactInputSingle) {
       hookData: "0x",
     });
 
-    const priceUsdc = parseFloat(ethers.utils.formatUnits(result.amountOut, 6));
-    console.log(`   ✅ [${this.chain}] 1 ETH = ${priceUsdc} USDC`);
-    return priceUsdc;
+    priceUsdc = parseFloat(ethers.utils.formatUnits(result.amountOut, 6));
+  } catch (error: any) {
+    try {
+      const { amountOut, gasEstimate } = decodeQuoteRevert(error.data);
+      const amountOutFormatted = parseFloat(
+        ethers.utils.formatUnits(amountOut.toString(), 6),
+      );
+      priceUsdc = amountOutFormatted;
+    } catch (decodeError) {
+      console.error("Failed to decode revert data:", error.data);
+      throw error;
+    }
+  }
+  console.log(`   ✅ [${this.chain}] 1 ETH = ${priceUsdc} USDC`);
+  return priceUsdc;
+}
+}
+
+function decodeQuoteRevert(revertData: string): {
+  amountOut: bigint;
+  gasEstimate: bigint;
+} {
+  const abiCoder = new ethers.utils.AbiCoder();
+
+  // First decode the outer UnexpectedRevertBytes(bytes)
+  const outerBytes = abiCoder.decode(["bytes"], "0x" + revertData.slice(10))[0];
+
+  try {
+    // V4 Quoter returns: (int128[] deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
+    const [deltaAmounts, sqrtPriceX96After, initializedTicksLoaded] = abiCoder.decode(
+      ["int128[]", "uint160", "uint32"],
+      outerBytes,
+    );
+
+    // deltaAmounts[0] is for currency0, deltaAmounts[1] is for currency1
+    // The "out" amount is the negative delta (what you receive)
+    // For zeroForOne=true (ETH→USDC): deltaAmounts[0] > 0 (pay), deltaAmounts[1] < 0 (receive)
+    // For zeroForOne=false (USDC→ETH): deltaAmounts[0] < 0 (receive), deltaAmounts[1] > 0 (pay)
+
+    const delta0 = BigInt(deltaAmounts[0].toString());
+    const delta1 = BigInt(deltaAmounts[1].toString());
+
+    // Return the absolute value of the negative delta (the amount you receive)
+    const amountOut = delta0 < 0n ? -delta0 : -delta1;
+
+    return {
+      amountOut: amountOut < 0n ? -amountOut : amountOut,
+      gasEstimate: BigInt(200000), // V4 quoter doesn't return gas estimate
+    };
+  } catch (e) {
+    // Fallback: try the old uint256 format for compatibility
+    const bytesLength = (outerBytes.length - 2) / 2;
+    if (bytesLength >= 64) {
+      const [amountOut, secondValue] = abiCoder.decode(
+        ["uint256", "uint256"],
+        outerBytes,
+      );
+      return {
+        amountOut: BigInt(amountOut.toString()),
+        gasEstimate: BigInt(200000),
+      };
+    } else {
+      const amountOut = BigInt(outerBytes);
+      return {
+        amountOut,
+        gasEstimate: BigInt(0),
+      };
+    }
   }
 }

@@ -2,7 +2,20 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { config } from "../src/config";
 import { MultiChainSwapAdapter, SupportedChain } from "../src/multichain";
-
+import {
+  getGatewayBalancesTool,
+  getBalanceOnChainTool,
+  getTotalGatewayBalanceTool,
+  findChainsWithBalanceTool,
+  checkSufficientBalanceTool,
+  depositUsdcTool,
+  depositMultipleChainsTool,
+  getWalletBalanceTool,
+  transferUsdcTool,
+  transferFromMultipleChainsTool,
+  consolidateBalancesTool,
+  findBestChainForLiquidityTool,
+} from "../../gateway/tools.ts";
 // Chain enum for tool schemas
 const ChainEnum = z.enum(["SEPOLIA", "BASE", "ARBITRUM", "UNICHAIN"]);
 
@@ -24,7 +37,7 @@ function getAdapter(chain: SupportedChain): MultiChainSwapAdapter {
   return new MultiChainSwapAdapter(
     chain,
     getRpcUrl(chain),
-    config.AGENT_PRIVATE_KEY as `0x${string}`
+    config.AGENT_PRIVATE_KEY as `0x${string}`,
   );
 }
 
@@ -45,11 +58,12 @@ export const getQuoteTool = tool(
   },
   {
     name: "get_eth_quote",
-    description: "Get the current ETH price in USDC from a specific chain's Uniswap V4 pool",
+    description:
+      "Get the current ETH price in USDC from a specific chain's Uniswap V4 pool",
     schema: z.object({
       chain: ChainEnum.describe("The chain to get the quote from"),
     }),
-  }
+  },
 );
 
 /**
@@ -59,8 +73,17 @@ export const getAllQuotesTool = tool(
   async () => {
     console.log(`📊 Getting ETH quotes from all chains...`);
 
-    const chains: SupportedChain[] = ["SEPOLIA", "BASE", "ARBITRUM", "UNICHAIN"];
-    const results: { chain: string; ethPriceUsdc: number | null; error?: string }[] = [];
+    const chains: SupportedChain[] = [
+      "SEPOLIA",
+      "BASE",
+      "ARBITRUM",
+      "UNICHAIN",
+    ];
+    const results: {
+      chain: string;
+      ethPriceUsdc: number | null;
+      error?: string;
+    }[] = [];
 
     for (const chain of chains) {
       try {
@@ -74,24 +97,32 @@ export const getAllQuotesTool = tool(
     }
 
     // Find best prices
-    const validResults = results.filter(r => r.ethPriceUsdc !== null);
-    const bestBuy = validResults.reduce((a, b) =>
-      (a?.ethPriceUsdc! < b.ethPriceUsdc!) ? a : b, validResults[0]);
-    const bestSell = validResults.reduce((a, b) =>
-      (a?.ethPriceUsdc! > b.ethPriceUsdc!) ? a : b, validResults[0]);
+    const validResults = results.filter((r) => r.ethPriceUsdc !== null);
+    const bestBuy = validResults.reduce(
+      (a, b) => (a?.ethPriceUsdc! < b.ethPriceUsdc! ? a : b),
+      validResults[0],
+    );
+    const bestSell = validResults.reduce(
+      (a, b) => (a?.ethPriceUsdc! > b.ethPriceUsdc! ? a : b),
+      validResults[0],
+    );
 
     return JSON.stringify({
       quotes: results,
       bestChainToBuyEth: bestBuy?.chain,
       bestChainToSellEth: bestSell?.chain,
-      spread: bestSell && bestBuy ? bestSell.ethPriceUsdc! - bestBuy.ethPriceUsdc! : 0,
+      spread:
+        bestSell && bestBuy
+          ? bestSell.ethPriceUsdc! - bestBuy.ethPriceUsdc!
+          : 0,
     });
   },
   {
     name: "get_all_eth_quotes",
-    description: "Get ETH price quotes from all supported chains (SEPOLIA, BASE, ARBITRUM, UNICHAIN) and find arbitrage opportunities",
+    description:
+      "Get ETH price quotes from all supported chains (SEPOLIA, BASE, ARBITRUM, UNICHAIN) and find arbitrage opportunities",
     schema: z.object({}),
-  }
+  },
 );
 
 // ============== SWAP TOOLS ==============
@@ -109,18 +140,24 @@ export const simulateUsdcToEthTool = tool(
     return JSON.stringify({
       chain,
       amountInUsdc: amountUsdc,
+      expectedEthOut: (Number(result.expectedAmountOut) / 1e18).toFixed(8),
       gasEstimate: result.gasUsed.toString(),
       success: true,
     });
   },
   {
     name: "simulate_usdc_to_eth",
-    description: "Simulate swapping USDC to ETH on a specific chain without executing. Use this to estimate gas costs.",
+    description:
+      "Simulate swapping USDC to ETH on a specific chain without executing. Returns expected ETH output and gas estimate.",
     schema: z.object({
       chain: ChainEnum.describe("The chain to simulate the swap on"),
-      amountUsdc: z.number().min(1).max(10000).describe("Amount of USDC to swap"),
+      amountUsdc: z
+        .number()
+        .min(1)
+        .max(10000)
+        .describe("Amount of USDC to swap"),
     }),
-  }
+  },
 );
 
 /**
@@ -136,18 +173,24 @@ export const simulateEthToUsdcTool = tool(
     return JSON.stringify({
       chain,
       amountInEth: amountEth,
+      expectedUsdcOut: (Number(result.expectedAmountOut) / 1e6).toFixed(2),
       gasEstimate: result.gasUsed.toString(),
       success: true,
     });
   },
   {
     name: "simulate_eth_to_usdc",
-    description: "Simulate swapping ETH to USDC on a specific chain without executing. Use this to estimate gas costs.",
+    description:
+      "Simulate swapping ETH to USDC on a specific chain without executing. Returns expected USDC output and gas estimate.",
     schema: z.object({
       chain: ChainEnum.describe("The chain to simulate the swap on"),
-      amountEth: z.number().min(0.001).max(10).describe("Amount of ETH to swap"),
+      amountEth: z
+        .number()
+        .min(0.001)
+        .max(10)
+        .describe("Amount of ETH to swap"),
     }),
-  }
+  },
 );
 
 /**
@@ -171,13 +214,21 @@ export const swapUsdcToEthTool = tool(
   },
   {
     name: "swap_usdc_to_eth",
-    description: "Execute a swap from USDC to ETH on a specific chain. This will spend real tokens!",
+    description:
+      "Execute a swap from USDC to ETH on a specific chain. This will spend real tokens!",
     schema: z.object({
       chain: ChainEnum.describe("The chain to execute the swap on"),
-      amountUsdc: z.number().min(1).max(10000).describe("Amount of USDC to swap"),
-      minEthOut: z.number().optional().describe("Minimum ETH to receive (slippage protection)"),
+      amountUsdc: z
+        .number()
+        .min(1)
+        .max(10000)
+        .describe("Amount of USDC to swap"),
+      minEthOut: z
+        .number()
+        .optional()
+        .describe("Minimum ETH to receive (slippage protection)"),
     }),
-  }
+  },
 );
 
 /**
@@ -201,30 +252,91 @@ export const swapEthToUsdcTool = tool(
   },
   {
     name: "swap_eth_to_usdc",
-    description: "Execute a swap from ETH to USDC on a specific chain. This will spend real tokens!",
+    description:
+      "Execute a swap from ETH to USDC on a specific chain. This will spend real tokens!",
     schema: z.object({
       chain: ChainEnum.describe("The chain to execute the swap on"),
-      amountEth: z.number().min(0.001).max(10).describe("Amount of ETH to swap"),
-      minUsdcOut: z.number().optional().describe("Minimum USDC to receive (slippage protection)"),
+      amountEth: z
+        .number()
+        .min(0.001)
+        .max(10)
+        .describe("Amount of ETH to swap"),
+      minUsdcOut: z
+        .number()
+        .optional()
+        .describe("Minimum USDC to receive (slippage protection)"),
     }),
-  }
+  },
 );
 
+export const getEthBalance = tool(
+  async ({ chain }) => {
+    const adapter = getAdapter(chain as SupportedChain);
+    const balance = await adapter.getEthBalance();
+
+    return JSON.stringify({
+      chain,
+      balanceEth: balance,
+    });
+  },
+  {
+    name: "get_eth_balance",
+    description:
+      "Get the ETH balance of the agent's wallet on a specific chain",
+    schema: z.object({
+      chain: ChainEnum.describe("The chain to get the ETH balance from"),
+    }),
+  },
+);
 // Export all tools
 export const tools = [
+  // get eth balance
+  getEthBalance,
+  // Swap tools
   getQuoteTool,
   getAllQuotesTool,
   simulateUsdcToEthTool,
   simulateEthToUsdcTool,
   swapUsdcToEthTool,
   swapEthToUsdcTool,
+  // Gateway tools - Balance
+  getGatewayBalancesTool,
+  getBalanceOnChainTool,
+  getTotalGatewayBalanceTool,
+  findChainsWithBalanceTool,
+  checkSufficientBalanceTool,
+  // Gateway tools - Deposit
+  depositUsdcTool,
+  depositMultipleChainsTool,
+  getWalletBalanceTool,
+  // Gateway tools - Transfer
+  transferUsdcTool,
+  transferFromMultipleChainsTool,
+  consolidateBalancesTool,
+  // Gateway tools - Analysis
+  findBestChainForLiquidityTool,
 ];
 
 export const toolsByName = {
+  get_eth_balance: getEthBalance,
+  // Swap tools
   get_eth_quote: getQuoteTool,
   get_all_eth_quotes: getAllQuotesTool,
   simulate_usdc_to_eth: simulateUsdcToEthTool,
   simulate_eth_to_usdc: simulateEthToUsdcTool,
   swap_usdc_to_eth: swapUsdcToEthTool,
   swap_eth_to_usdc: swapEthToUsdcTool,
+  // Gateway tools
+  get_gateway_balances: getGatewayBalancesTool,
+  get_gateway_balance_on_chain: getBalanceOnChainTool,
+  get_total_gateway_balance: getTotalGatewayBalanceTool,
+  find_chains_with_balance: findChainsWithBalanceTool,
+  check_sufficient_gateway_balance: checkSufficientBalanceTool,
+  deposit_usdc_to_gateway: depositUsdcTool,
+  deposit_usdc_multiple_chains: depositMultipleChainsTool,
+  get_wallet_usdc_balance: getWalletBalanceTool,
+  transfer_usdc_crosschain: transferUsdcTool,
+  transfer_usdc_from_multiple_chains: transferFromMultipleChainsTool,
+  consolidate_usdc_to_chain: consolidateBalancesTool,
+  analyze_gateway_liquidity: findBestChainForLiquidityTool,
 };
