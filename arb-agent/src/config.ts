@@ -6,6 +6,9 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const ConfigSchema = z.object({
   SEPOLIA_RPC_URL: z.string(),
+  BASE_SEPOLIA_RPC_URL: z.string().optional(),
+  ARBITRUM_SEPOLIA_RPC_URL: z.string().optional(),
+  UNICHAIN_RPC_URL: z.string().optional(),
   AGENT_PRIVATE_KEY: z
     .string()
     .regex(/^0x[a-fA-F0-9]{64}$/, "Invalid private key format"),

@@ -5,7 +5,9 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "node --max-old-space-size=4096 -r ts-node/register agent/server.ts",
+    "chat": "node --max-old-space-size=4096 -r ts-node/register agent/agent.ts"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +17,7 @@
     "@ethersproject/bignumber": "^5.8.0",
     "@ethersproject/contracts": "^5.8.0",
     "@ethersproject/providers": "^5.8.0",
+    "@langchain/google-genai": "^2.1.15",
     "@uniswap/sdk-core": "^7.10.1",
     "@uniswap/universal-router-sdk": "^4.29.5",
     "@uniswap/v4-sdk": "^1.27.0",
